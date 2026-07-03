@@ -1,5 +1,3 @@
-const fs = require("fs");
-const clone = require("clone");
 const data = require("./db.json");
 // import jsonServer from "json-server";
 const jsonServer = require("json-server");
@@ -7,36 +5,18 @@ const jsonServer = require("json-server");
 // import  jwt from "jsonwebtoken";
 const jwt = require("jsonwebtoken");
 
-const isProductionEnv = process.env.NODE_ENV === "production";
-
-// import fetch from "node-fetch";
-// import bodyParser from "json-server/lib/server/body-parser";
 const bodyParser = require("body-parser");
 const server = jsonServer.create();
-// const router = jsonServer.router("database.json");
-
-// For mocking the POST request, POST request won't make any changes to the DB in production environment
-const router = jsonServer.router(
-  isProductionEnv ? clone(data) : "database.json",
-  {
-    _isFake: isProductionEnv
-  }
-);
+const router = jsonServer.router("db.json");
 
 server.use(bodyParser.urlencoded({ extended: true }));
 server.use(bodyParser.json());
 server.use(jsonServer.defaults());
-if (isProductionEnv) {
-  server.use((req, res, next) => {
-    if (req.path !== "/") router.db.setState(clone(data));
-    next();
-  });
-}
 
 const SECRET_KEY = "123456789";
 
 // token timeout is set here
-const expiresIn = "1m";
+const expiresIn = "5m";
 
 // Create a token from a payload
 function createToken(payload) {
@@ -75,9 +55,33 @@ function convertToJson(res) {
   }
 }
 
+// Helper function to get the authenticated user from the request
+function getAuthenticatedUser(req) {
+  return router.db.get("users").find({ email: req.claims.email }).value();
+}
+
+// Middleware de autenticacion
+server.use((req, res, next) => {
+  const auth = req.headers.authorization;
+
+  if (auth && auth.startsWith("Bearer ")) {
+    try {
+      const token = auth.split(" ")[1];
+      req.claims = verifyToken(token);
+    } catch (err) {
+      return res.status(401).json({
+        message: err.message,
+      });
+    }
+  }
+
+  next();
+});
+
 server.post("/login", (req, res) => {
   const { email, password } = req.body;
   console.log(email, password);
+
   if (isAuthenticated({ email, password }) === false) {
     const status = 401;
     const message = "Incorrect username or password";
@@ -100,156 +104,120 @@ server.post("/users", (req, res) => {
   }
 });
 
-const apiKey = "/?api_key=6ff8b372bdd0ca37da830f278129a7bf";
-const baseUrl = "http://api.sierratradingpost.com/api/1.0/";
-
-// server.post('/proxy',(req,res) => {
-
-//   const { url } = req.body;
-//   console.log(url);
-//   fetch(url+apiKey).then(convertToJson).then((data) => {
-//     res.status(200).json(data);
-//   })
-
-// });
-
-server.get("/product/:id", async (req, res) => {
-  const id = req.params.id;
-  // fetch(baseUrl+'product/'+id+apiKey)
-  // .then(convertToJson)
-  // .then((data) => {
-  //   res.status(200).json(data);
-  // }).catch((err) => res.status(401).json(err));
-  const products = await router.db.get("products");
-  const product = await products.find((product) => product.Id == id);
-  console.log(products);
-  if (product) {
-    res.status(200).json({ Result: product });
+// Admin function to get leave records for a specific employee by their employeeId
+server.get("/leave/:employeeId", async (req, res) => {
+  const employeeId = req.params.employeeId;
+  const leaveRecords = await router.db.get("leave").value();
+  const employeeLeave = leaveRecords.filter(
+    (record) => record.employeeId == employeeId,
+  );
+  console.log(employeeLeave);
+  if (employeeLeave.length > 0) {
+    res.status(200).json({ Result: employeeLeave });
   } else {
-    res.status(400).json({ Result: "No Product found" });
-  }
-});
-server.get("/products/search/:query", (req, res) => {
-  const query = req.params.query;
-  // console.log(baseUrl+'products/search~'+query+apiKey);
-  // fetch(baseUrl+'products/search~'+query+apiKey)
-  // .then(convertToJson)
-  // .then((data) => {
-  //   res.status(200).json(data);
-  // })
-  // .catch((err) => res.status(400).json(err));
-  const products = router.db.get("products");
-  const filtered = products.filter((product) => product.Category == query);
-  // const lastOrder = Math.max(...products.map(o=>o.id));
-  // order.id = lastOrder+1;
-  // products.push(order).write();
-  if (filtered) {
-    res.status(200).json({ Result: filtered });
-  } else {
-    res.status(200).json({ Result: "No products found" });
+    res.status(400).json({ Result: "No leave records found" });
   }
 });
 
-// checkout
-server.post("/checkout", (req, res) => {
-  const order = req.body;
-  let error = false;
-  let errorMsg = {};
-  // console.log(order);
-  // check for required fields
-  if (!order.orderDate) {
-    error = true;
-    errorMsg.orderDate = "No Order Date";
-  }
-  if (!order.fname) {
-    error = true;
-    errorMsg.fname = "No First Name";
-  }
-  if (!order.lname) {
-    error = true;
-    errorMsg.lname = "No Last Name";
-  }
-  if (!order.street || !order.city || !order.state || !order.zip) {
-    error = true;
-    errorMsg.address = "Missing or incomplete address";
-  }
-  if (!order.cardNumber) {
-    error = true;
-    errorMsg.cardNumber = "No card number";
-  } else if (order.cardNumber !== "1234123412341234") {
-    // check for valid number
-    error = true;
-    errorMsg.cardNumber = "Invalid Card Number";
-  }
-  if (!order.expiration) {
-    error = true;
-    errorMsg.expiration = "Missing card expiration";
-  } else {
-    const parts = order.expiration.split("/");
-    console.log(parts);
-    if (parts[0] > 0 && parts[0] <= 12 && parts[1]) {
-      const expireDate = new Date(
-        parseInt("20" + parts[1]),
-        parseInt(parts[0]) - 1,
-        1
-      );
-      const curDate = new Date();
+// Employee function to get leave records for the logged-in user
+server.get("/leave-days", (req, res) => {
+  const user = router.db.get("users").find({ email: req.claims.email }).value();
 
-      if (expireDate < curDate) {
-        error = true;
-        errorMsg.expiration = "Card expired";
-      }
-    } else {
-      error = true;
-      errorMsg.expiration = "Invalid expiration date";
-    }
-  }
-  if (error) {
-    res.status(400).json(errorMsg);
-  } else {
-    const orders = router.db.get("orders");
-    const lastOrder = Math.max(...orders.map((o) => o.id));
-    order.id = lastOrder + 1;
-    orders.push(order).write();
-    res.status(200).json({ orderId: order.id, message: "Order Placed" });
-  }
+  const leave = router.db
+    .get("leave")
+    .filter({ employeeId: user.employeeId })
+    .value();
+
+  res.json(leave);
 });
 
-server.use((req, res, next) => {
-  if (req.method === "POST") {
-    const { authorization } = req.headers;
-    if (authorization) {
-      const [scheme, token] = authorization.split(" ");
-      //jwt.verify(token, 'json-server-auth-123456');
-      // Add claims to request
-      req.claims = verifyToken(token);
-      req.body.userId = req.claims.email;
-    }
-    req.body.createdAt = Date.now();
+server.get("/me", (req, res) => {
+  if (!req.claims) {
+    return res.status(401).json({ message: "No token" });
   }
-  // Continue to JSON Server router
-  next();
-});
-server.use(/^(?!\/auth).*$/, (req, res, next) => {
-  if (
-    req.headers.authorization === undefined ||
-    req.headers.authorization.split(" ")[0] !== "Bearer"
-  ) {
-    const status = 401;
-    const message = "Error in authorization format";
-    res.status(status).json({ status, message });
-    return;
-  }
-  try {
-    console.log("checking token");
-    verifyToken(req.headers.authorization.split(" ")[1]);
 
-    next();
-  } catch (err) {
-    const status = 401;
-    const message = err.message;
-    res.status(status).json({ status, message });
+  const user = router.db.get("users").find({ email: req.claims.email }).value();
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
   }
+
+  res.json(user);
+});
+
+// leave request endpoint
+server.post("/new-leave-request", (req, res) => {
+  const user = router.db.get("users").find({ email: req.claims.email }).value();
+  const leaveRequest = req.body;
+
+  if (!leaveRequest.startDate || !leaveRequest.endDate) {
+    return res
+      .status(400)
+      .json({ message: "Start date and end date are required" });
+  }
+
+  // Calculate the number of days requested
+  const startDate = new Date(leaveRequest.startDate);
+  const endDate = new Date(leaveRequest.endDate);
+  const timeDiff = endDate - startDate;
+  const daysRequested = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1; // +1 to include the start date
+
+  if (daysRequested > user.daysLeft) {
+    return res.status(400).json({ message: "Not enough leave days left" });
+  }
+
+  // Create a new leave record
+  const newLeaveRecord = {
+    id: router.db.get("leaveRequests").value().length + 1,
+    userId: user.id,
+    startDate: leaveRequest.startDate,
+    endDate: leaveRequest.endDate,
+    daysRequested: daysRequested,
+  };
+
+  router.db.get("leaveRequests").push(newLeaveRecord).write();
+
+  res.status(200).json({ message: "Leave request submitted successfully" });
+});
+
+// my leave requests endpoint
+server.get("/my-leave-requests", (req, res) => {
+  const user = router.db.get("users").find({ email: req.claims.email }).value();
+
+  const leaveRequests = router.db
+    .get("leaveRequests")
+    .filter({ employeeId: user.employeeId })
+    .value();
+
+  res.json(leaveRequests);
+});
+
+// Admin function to get all leave requests
+server.get("/leave-requests", (req, res) => {
+  const leaveRequests = router.db.get("leaveRequests").value();
+  res.json(leaveRequests);
+});
+
+// Admin function to approve a leave request
+server.post("/approve-leave-request/:id", (req, res) => {
+  const requestId = parseInt(req.params.id);
+  const leaveRequest = router.db
+    .get("leaveRequests")
+    .find({ id: requestId })
+    .value();
+
+  if (!leaveRequest) {
+    return res.status(404).json({ message: "Leave request not found" });
+  }
+
+  // Update the leave request status
+  router.db
+    .get("leaveRequests")
+    .find({ id: requestId })
+    .assign({ status: "approved" })
+    .write();
+
+  res.json({ message: "Leave request approved" });
 });
 
 server.use(router);
