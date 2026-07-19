@@ -89,6 +89,50 @@
       "createdAt": "2025-07-30",
       "status": "rejected",
       "reviewDate": "2025-08-05"
+    },
+    {
+      "id": 4,
+      "employeeId": 10938,
+      "startDate": "2026-07-30",
+      "endDate": "2026-07-31",
+      "days": 2,
+      "description": "111",
+      "createdAt": "2026-07-15",
+      "status": "pending",
+      "reviewDate": null
+    },
+    {
+      "id": 5,
+      "employeeId": 667,
+      "startDate": "2026-08-05",
+      "endDate": "2026-08-07",
+      "days": 3,
+      "description": "22",
+      "createdAt": "2026-07-15",
+      "status": "pending",
+      "reviewDate": null
+    },
+    {
+      "id": 6,
+      "employeeId": 10938,
+      "startDate": "2026-07-30",
+      "endDate": "2026-07-31",
+      "days": 2,
+      "description": "333",
+      "createdAt": "2026-07-16",
+      "status": "pending",
+      "reviewDate": null
+    },
+    {
+      "id": 7,
+      "employeeId": 10938,
+      "startDate": "2026-08-11",
+      "endDate": "2026-08-13",
+      "days": 3,
+      "description": "444",
+      "createdAt": "2026-07-16",
+      "status": "pending",
+      "reviewDate": null
     }
   ],
   "leaveTransactions": [

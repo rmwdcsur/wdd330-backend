@@ -149,7 +149,9 @@ server.get("/me", (req, res) => {
 server.post("/new-leave-request", (req, res) => {
   const user = router.db.get("users").find({ email: req.claims.email }).value();
   const leaveRequest = req.body;
-
+  
+  console.log(req.body);
+  
   if (!leaveRequest.startDate || !leaveRequest.endDate) {
     return res
       .status(400)
@@ -161,6 +163,7 @@ server.post("/new-leave-request", (req, res) => {
   const endDate = new Date(leaveRequest.endDate);
   const timeDiff = endDate - startDate;
   const daysRequested = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1; // +1 to include the start date
+  const now = new Date();
 
   if (daysRequested > user.daysLeft) {
     return res.status(400).json({ message: "Not enough leave days left" });
@@ -169,10 +172,14 @@ server.post("/new-leave-request", (req, res) => {
   // Create a new leave record
   const newLeaveRecord = {
     id: router.db.get("leaveRequests").value().length + 1,
-    userId: user.id,
+    employeeId: user.employeeId,
     startDate: leaveRequest.startDate,
     endDate: leaveRequest.endDate,
-    daysRequested: daysRequested,
+    days: daysRequested,
+	description: leaveRequest.description,
+	createdAt: now.toISOString().split("T")[0],
+	status: "pending",
+	reviewDate: null,
   };
 
   router.db.get("leaveRequests").push(newLeaveRecord).write();
